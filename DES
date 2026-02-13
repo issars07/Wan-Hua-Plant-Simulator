@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProSim Enterprise - Noodle Factory</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; overflow-x: hidden; }
+
+        /* Machine Node Styling */
+        .machine-node { 
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); 
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .processing {
+            background-color: #f0fdf4 !important;
+            border-color: #22c55e !important;
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+        }
+
+        /* Unit Animation inside machines */
+        .unit {
+            position: absolute;
+            transition: all 0.5s ease-in-out;
+            opacity: 0;
+            z-index: 10;
+        }
+        .unit-entering { transform: translateX(-40px); opacity: 0; }
+        .unit-processing { transform: translateX(0); opacity: 1; animation: pulse-work 1s infinite ease-in-out; }
+        .unit-exiting { transform: translateX(40px); opacity: 0; }
+
+        @keyframes pulse-work {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* --- TRUCK LOGISTICS ANIMATIONS --- */
+        
+        /* KEY TRICK: 
+           The default 🚚 emoji faces left. 
+           To make it face RIGHT (forward motion), we use transform: scaleX(-1).
+        */
+
+        @keyframes inboundMove {
+            0% { transform: translateX(-200px) scaleX(-1); opacity: 0; }
+            10% { opacity: 1; }
+            45% { transform: translateX(0) scaleX(-1); } /* Stop at warehouse */
+            90% { transform: translateX(0) scaleX(-1); opacity: 1; }
+            100% { transform: translateX(0) scaleX(-1); opacity: 0; }
+        }
+
+        @keyframes outboundMove {
+            0% { transform: translateX(0) scaleX(-1); opacity: 0; }
+            10% { opacity: 1; }
+            40% { transform: translateX(0) scaleX(-1); } /* Wait for loading */
+            100% { transform: translateX(200px) scaleX(-1); opacity: 0; }
+        }
+
+        .truck-facing-right {
+            display: inline-block;
+            /* This is the specific code to flip the emoji to face right */
+            transform: scaleX(-1); 
+        }
+
+        .anim-inbound { animation: inboundMove 10s ease-in-out infinite; }
+        .anim-outbound { animation: outboundMove 10s ease-in-out infinite; }
+
+        /* Bottleneck Highlighting */
+        .bottleneck-glow {
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+            border: 2px solid #ef4444 !important;
+        }
+
+        .buffer-pill {
+            width: 4px;
+            height: 8px;
+            background: #94a3b8;
+            border-radius: 1px;
+            margin: 1px;
+        }
+
+        /* Noodle Strand Visual */
+        .noodle-strand {
+            width: 24px;
+            height: 18px;
+            background: repeating-linear-gradient(90deg, #fde047, #fde047 2px, transparent 2px, transparent 4px);
+            border-radius: 2px;
+        }
+
+        input[type="number"] {
+            border: 1px solid #cbd5e1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            width: 55px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-6">
+    <div class="max-w-[1400px] mx-auto space-y-6">
+        
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-center bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+            <div>
+                <h1 class="text-2xl font-extrabold text-slate-900">ProSim <span class="text-amber-500">NoodleWorks</span></h1>
+                <p class="text-xs text-slate-500 font-medium tracking-wide">Supply Chain & Production Simulator</p>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <button onclick="location.reload()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-bold transition">Reset</button>
+                <button id="playPauseBtn" onclick="toggleSim()" class="px-8 py-2 bg-slate-900 hover:bg-black text-white rounded-lg text-sm font-bold shadow-lg transition">Start Sim</button>
+            </div>
+        </div>
+
+        <!-- KPI Dashboard -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-xl border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Raw Materials</p>
+                <div id="inv-raw" class="text-2xl font-bold text-slate-800">0</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Constraint Stage</p>
+                <div id="kpi-bottleneck" class="text-xl font-bold text-red-500 italic">Standby</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total WIP</p>
+                <div id="kpi-wip" class="text-2xl font-bold text-slate-800">0</div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Finished Goods</p>
+                <div id="inv-fg" class="text-2xl font-bold text-emerald-600">0</div>
+            </div>
+        </div>
+
+        <!-- Simulation Viewport -->
+        <div class="bg-white p-16 rounded-3xl shadow-xl border border-slate-200 overflow-x-auto">
+            <div class="min-w-[1100px] flex items-center justify-between gap-4" id="sim-viewport">
+                
+                <!-- Inbound Logistics -->
+                <div class="relative flex flex-col items-center">
+                    <!-- The truck icon is flipped via the anim-inbound/scaleX logic -->
+                    <span class="text-4xl absolute -top-16 anim-inbound">🚚</span>
+                    <div class="relative w-24 h-40 border-4 border-slate-200 rounded-2xl bg-slate-50 flex flex-wrap content-start p-2 gap-px" id="vis-raw-inv">
+                        <div class="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+                            <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 24 24"><path d="M3 10v11h6v-7h6v7h6v-11L12 3z"/></svg>
+                        </div>
+                    </div>
+                    <p class="text-[10px] font-bold mt-2 text-slate-400">RAW STORAGE</p>
+                </div>
+
+                <!-- Production Stages -->
+                <div id="production-line" class="flex items-center gap-6 flex-1 justify-center">
+                    <!-- Injected by JavaScript -->
+                </div>
+
+                <!-- Outbound Logistics -->
+                <div class="relative flex flex-col items-center">
+                    <span class="text-4xl absolute -top-16 anim-outbound">🚛</span>
+                    <div class="relative w-24 h-40 border-4 border-emerald-100 rounded-2xl bg-emerald-50/30 flex flex-wrap content-start p-2 gap-px" id="vis-fg-inv">
+                        <div class="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+                            <svg class="w-12 h-12 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M3 10v11h6v-7h6v7h6v-11L12 3z"/></svg>
+                        </div>
+                    </div>
+                    <p class="text-[10px] font-bold mt-2 text-emerald-600">SHIPPING YARD</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parameters Section -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <h3 class="font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                Line Tuning
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6" id="stage-config-grid"></div>
+        </div>
+    </div>
+
+    <script>
+        const MACHINE_SVG = `<svg class="w-8 h-8 text-slate-200 group-[.processing]:text-emerald-400 transition-colors z-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>`;
+        
+        let simRunning = false;
+        let inventory = { raw: 30, fg: 0, buffers: [0, 0, 0] };
+        let stats = { ticks: 0 };
+
+        const config = {
+            stages: [
+                { name: 'Flour Mixing', machines: 1, time: 3, batchSize: 1, type: 'icon', icon: '⚪', load: 0, utilSum: 0, ticks: 0 },
+                { name: 'Dough Extrusion', machines: 2, time: 6, batchSize: 1, type: 'noodle', load: 0, utilSum: 0, ticks: 0 },
+                { name: 'Steam Cooking', machines: 1, time: 5, batchSize: 2, type: 'noodle', load: 0, utilSum: 0, ticks: 0 },
+                { name: 'Final Packing', machines: 1, time: 2, batchSize: 4, type: 'icon', icon: '📦', load: 0, utilSum: 0, ticks: 0 }
+            ]
+        };
+
+        function init() {
+            renderProductionLine();
+            renderControls();
+        }
+
+        function renderProductionLine() {
+            const container = document.getElementById('production-line');
+            container.innerHTML = '';
+            
+            config.stages.forEach((s, idx) => {
+                const sDiv = document.createElement('div');
+                sDiv.id = `stage-node-${idx}`;
+                sDiv.className = "flex flex-col items-center p-5 rounded-3xl border-2 border-slate-100 bg-white w-44 shadow-sm transition-all";
+                
+                let mHtml = '';
+                for(let i=0; i<s.machines; i++) {
+                    const unitHtml = s.type === 'noodle' ? `<div class="unit unit-entering noodle-strand"></div>` : `<div class="unit unit-entering text-xl">${s.icon}</div>`;
+                    mHtml += `
+                        <div id="m-${idx}-${i}" class="group machine-node w-16 h-16 rounded-xl bg-slate-50 border border-slate-200">
+                            ${MACHINE_SVG}
+                            ${unitHtml}
+                        </div>`;
+                }
+
+                sDiv.innerHTML = `
+                    <span class="text-[10px] font-black text-slate-400 uppercase mb-4 text-center tracking-widest leading-tight h-8 flex items-center">${s.name}</span>
+                    <div class="grid grid-cols-1 gap-3 justify-items-center w-full">${mHtml}</div>
+                    <div class="mt-4 flex flex-col items-center">
+                        <div class="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full" id="util-text-${idx}">0%</div>
+                    </div>
+                `;
+                container.appendChild(sDiv);
+
+                if (idx < config.stages.length - 1) {
+                    const bDiv = document.createElement('div');
+                    bDiv.className = "flex flex-col items-center";
+                    bDiv.innerHTML = `<div id="buf-vis-${idx}" class="w-10 min-h-[70px] bg-slate-100/50 border border-dashed border-slate-200 rounded-xl flex flex-wrap p-1.5 content-start gap-px"></div>`;
+                    container.appendChild(bDiv);
+                }
+            });
+        }
+
+        function renderControls() {
+            const grid = document.getElementById('stage-config-grid');
+            grid.innerHTML = '';
+            config.stages.forEach((s, i) => {
+                const div = document.createElement('div');
+                div.className = "bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4";
+                div.innerHTML = `
+                    <p class="text-[10px] font-black text-slate-800 uppercase">${s.name}</p>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div class="flex justify-between items-center">
+                            <label class="text-[10px] text-slate-500 font-bold">CAPACITY</label>
+                            <input type="number" min="1" max="4" value="${s.machines}" onchange="updateStage(${i}, 'machines', this.value)">
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <label class="text-[10px] text-slate-500 font-bold">CYCLE (s)</label>
+                            <input type="number" min="1" max="60" value="${s.time}" onchange="updateStage(${i}, 'time', this.value)">
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <label class="text-[10px] text-amber-600 font-bold">BATCH</label>
+                            <input type="number" min="1" max="20" value="${s.batchSize}" onchange="updateStage(${i}, 'batchSize', this.value)">
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(div);
+            });
+        }
+
+        function updateStage(idx, key, val) {
+            config.stages[idx][key] = parseInt(val);
+            renderProductionLine();
+        }
+
+        function simulationStep() {
+            if (!simRunning) return;
+
+            // Arrivals/Shipments logic
+            if (stats.ticks % 20 === 0) inventory.raw += 10;
+            if (stats.ticks % 40 === 0) inventory.fg = Math.max(0, inventory.fg - 15);
+
+            config.stages.forEach((stage, idx) => {
+                let availableInput = (idx === 0) ? inventory.raw : inventory.buffers[idx-1];
+                
+                if (stage.load < stage.machines && availableInput >= stage.batchSize) {
+                    if (idx === 0) inventory.raw -= stage.batchSize;
+                    else inventory.buffers[idx-1] -= stage.batchSize;
+                    startBatch(idx);
+                }
+                
+                stage.utilSum += (stage.load / stage.machines);
+                stage.ticks++;
+            });
+
+            stats.ticks++;
+            updateUI();
+            setTimeout(simulationStep, 500);
+        }
+
+        async function startBatch(stageIdx) {
+            const stage = config.stages[stageIdx];
+            stage.load++;
+            
+            const machines = document.querySelectorAll(`#stage-node-${stageIdx} .machine-node`);
+            let machineEl = null;
+            for(let el of machines) {
+                if (!el.classList.contains('processing')) {
+                    machineEl = el;
+                    break;
+                }
+            }
+
+            if (machineEl) {
+                const unitIcon = machineEl.querySelector('.unit');
+                machineEl.classList.add('processing');
+                unitIcon.className = stage.type === 'noodle' ? 'unit unit-processing noodle-strand' : 'unit unit-processing text-xl';
+                
+                await new Promise(r => setTimeout(r, stage.time * 1000));
+
+                unitIcon.className = stage.type === 'noodle' ? 'unit unit-exiting noodle-strand' : 'unit unit-exiting text-xl';
+                machineEl.classList.remove('processing');
+                
+                setTimeout(() => {
+                    unitIcon.className = stage.type === 'noodle' ? 'unit unit-entering noodle-strand' : 'unit unit-entering text-xl';
+                }, 500);
+            }
+
+            stage.load--;
+            if (stageIdx === config.stages.length - 1) {
+                inventory.fg += stage.batchSize;
+            } else {
+                inventory.buffers[stageIdx] += stage.batchSize;
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('inv-raw').innerText = inventory.raw;
+            document.getElementById('inv-fg').innerText = inventory.fg;
+            document.getElementById('kpi-wip').innerText = config.stages.reduce((a,b) => a + b.load, 0) + inventory.buffers.reduce((a,b) => a+b, 0);
+            
+            const drawItems = (id, count, color) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                let html = '';
+                const limit = 50;
+                for(let i=0; i<Math.min(count, limit); i++) html += `<div class="buffer-pill" style="background:${color}"></div>`;
+                el.innerHTML = html;
+            };
+
+            drawItems('vis-raw-inv', inventory.raw, '#94a3b8');
+            drawItems('vis-fg-inv', inventory.fg, '#10b981');
+            inventory.buffers.forEach((val, i) => drawItems(`buf-vis-${i}`, val, '#cbd5e1'));
+
+            let maxU = -1;
+            let bnIdx = -1;
+            config.stages.forEach((s, i) => {
+                const u = (s.utilSum / s.ticks) * 100;
+                document.getElementById(`util-text-${i}`).innerText = isNaN(u) ? '0%' : u.toFixed(0) + '%';
+                const node = document.getElementById(`stage-node-${i}`);
+                node.classList.remove('bottleneck-glow');
+                if (u > maxU) { maxU = u; bnIdx = i; }
+            });
+
+            if (bnIdx !== -1 && maxU > 5) {
+                document.getElementById('kpi-bottleneck').innerText = config.stages[bnIdx].name;
+                document.getElementById(`stage-node-${bnIdx}`).classList.add('bottleneck-glow');
+            }
+        }
+
+        function toggleSim() {
+            simRunning = !simRunning;
+            const btn = document.getElementById('playPauseBtn');
+            btn.innerText = simRunning ? "Stop Sim" : "Resume Sim";
+            if (simRunning) simulationStep();
+        }
+
+        init();
+    </script>
+</body>
+</html>
