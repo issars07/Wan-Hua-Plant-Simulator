@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProSim Enterprise - Noodle Factory</title>
+    <title>Noodle Factory</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono&display=swap');
@@ -25,15 +25,29 @@
             box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
         }
 
+        /* Movement: Left to Right */
         .unit {
             position: absolute;
             transition: all 0.5s ease-in-out;
             opacity: 0;
             z-index: 10;
         }
-        .unit-entering { transform: translateX(-40px); opacity: 0; }
-        .unit-processing { transform: translateX(0); opacity: 1; animation: pulse-work 1s infinite ease-in-out; }
-        .unit-exiting { transform: translateX(40px); opacity: 0; }
+        /* Entering from the left */
+        .unit-entering { 
+            transform: translateX(-40px); 
+            opacity: 0; 
+        }
+        /* Centered and pulsing */
+        .unit-processing { 
+            transform: translateX(0); 
+            opacity: 1; 
+            animation: pulse-work 1s infinite ease-in-out; 
+        }
+        /* Exiting to the right */
+        .unit-exiting { 
+            transform: translateX(40px); 
+            opacity: 0; 
+        }
 
         @keyframes pulse-work {
             0%, 100% { transform: scale(1); }
@@ -107,7 +121,7 @@
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-center bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
             <div>
-                <h1 class="text-2xl font-extrabold text-slate-900">ProSim <span class="text-amber-500">NoodleWorks</span></h1>
+                <h1 class="text-2xl font-extrabold text-slate-900">Wan-Hua <span class="text-amber-500">NoodleWorks</span></h1>
                 <p class="text-xs text-slate-500 font-medium tracking-wide">Industrial Logistics Simulator</p>
             </div>
 
@@ -261,7 +275,7 @@
             renderProductionLine();
             renderControls();
             updateLogistics();
-            updateUI(); // Initial UI draw
+            updateUI();
         }
 
         function setSpeed(val) {
@@ -418,13 +432,22 @@
             if (machineEl) {
                 const unitIcon = machineEl.querySelector('.unit');
                 machineEl.classList.add('processing');
-                unitIcon.className = stage.type === 'noodle' ? 'unit unit-processing noodle-strand' : 'unit unit-processing text-xl';
                 
+                // Set to entering (Ready to come from left)
+                unitIcon.className = stage.type === 'noodle' ? 'unit unit-entering noodle-strand' : 'unit unit-entering text-xl';
+                
+                // Instant switch to processing (Animate into center)
+                setTimeout(() => {
+                    unitIcon.className = stage.type === 'noodle' ? 'unit unit-processing noodle-strand' : 'unit unit-processing text-xl';
+                }, 50);
+
                 await new Promise(r => setTimeout(r, (stage.time * 1000) / simSpeed));
 
+                // Animate to right (Exit)
                 unitIcon.className = stage.type === 'noodle' ? 'unit unit-exiting noodle-strand' : 'unit unit-exiting text-xl';
                 machineEl.classList.remove('processing');
                 
+                // Reset to left-side hidden for next batch
                 setTimeout(() => {
                     unitIcon.className = stage.type === 'noodle' ? 'unit unit-entering noodle-strand' : 'unit unit-entering text-xl';
                 }, 500 / simSpeed);
