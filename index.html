@@ -93,6 +93,12 @@
         }
         .toggle-on { background-color: #10b981; color: white; }
         .toggle-off { background-color: #64748b; color: white; }
+
+        .speed-btn.active {
+            background-color: #f59e0b;
+            color: white;
+            border-color: #f59e0b;
+        }
     </style>
 </head>
 <body class="p-4 md:p-6 pb-24">
@@ -104,10 +110,26 @@
                 <h1 class="text-2xl font-extrabold text-slate-900">ProSim <span class="text-amber-500">NoodleWorks</span></h1>
                 <p class="text-xs text-slate-500 font-medium tracking-wide">Industrial Logistics Simulator</p>
             </div>
-            
-            <div class="flex items-center gap-4">
-                <button onclick="location.reload()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-bold transition">Reset</button>
-                <button id="playPauseBtn" onclick="toggleSim()" class="px-8 py-2 bg-slate-900 hover:bg-black text-white rounded-lg text-sm font-bold shadow-lg transition">Start Sim</button>
+
+            <!-- Clock and Speed Control -->
+            <div class="flex items-center gap-6">
+                <div class="bg-slate-100 px-4 py-2 rounded-lg border border-slate-200 text-center min-w-[120px]">
+                    <p class="text-[9px] font-bold text-slate-400 uppercase leading-none mb-1">Sim Time</p>
+                    <div id="sim-clock" class="font-mono text-lg font-bold text-slate-700">00:00:00</div>
+                </div>
+                
+                <div class="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 gap-1">
+                    <button onclick="setSpeed(1)" class="speed-btn active px-2 py-1 text-[10px] font-black rounded hover:bg-white transition" id="speed-1">1X</button>
+                    <button onclick="setSpeed(2)" class="speed-btn px-2 py-1 text-[10px] font-black rounded hover:bg-white transition" id="speed-2">2X</button>
+                    <button onclick="setSpeed(5)" class="speed-btn px-2 py-1 text-[10px] font-black rounded hover:bg-white transition" id="speed-5">5X</button>
+                    <button onclick="setSpeed(10)" class="speed-btn px-2 py-1 text-[10px] font-black rounded hover:bg-white transition" id="speed-10">10X</button>
+                    <button onclick="setSpeed(100)" class="speed-btn px-2 py-1 text-[10px] font-black rounded hover:bg-white transition" id="speed-100">100X</button>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <button onclick="location.reload()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-bold transition">Reset</button>
+                    <button id="playPauseBtn" onclick="toggleSim()" class="px-8 py-2 bg-slate-900 hover:bg-black text-white rounded-lg text-sm font-bold shadow-lg transition">Start Sim</button>
+                </div>
             </div>
         </div>
 
@@ -139,9 +161,6 @@
                 <div class="relative flex flex-col items-center">
                     <span id="truck-in" class="text-4xl absolute -top-16 opacity-0">🚚</span>
                     <div class="relative w-24 h-40 border-4 border-slate-200 rounded-2xl bg-slate-50 flex flex-wrap content-start p-2 gap-px overflow-hidden" id="vis-raw-inv">
-                        <div id="unlimited-raw-bg" class="absolute inset-0 flex items-center justify-center bg-slate-100 hidden">
-                            <span class="text-slate-400 font-black text-xs rotate-45">UNLIMITED</span>
-                        </div>
                     </div>
                     <p class="text-[10px] font-bold mt-2 text-slate-400">RAW STORAGE</p>
                 </div>
@@ -155,9 +174,6 @@
                 <div class="relative flex flex-col items-center">
                     <span id="truck-out" class="text-4xl absolute -top-16 opacity-0">🚛</span>
                     <div class="relative w-24 h-40 border-4 border-emerald-100 rounded-2xl bg-emerald-50/30 flex flex-wrap content-start p-2 gap-px overflow-hidden" id="vis-fg-inv">
-                        <div id="unlimited-fg-bg" class="absolute inset-0 flex items-center justify-center bg-emerald-50 hidden">
-                            <span class="text-emerald-300 font-black text-xs -rotate-45 text-center">AUTO<br>SHIP</span>
-                        </div>
                     </div>
                     <p class="text-[10px] font-bold mt-2 text-emerald-600">SHIPPING YARD</p>
                 </div>
@@ -223,8 +239,9 @@
         
         let simRunning = false;
         let logisticsUnlimited = false;
+        let simSpeed = 1;
         let inventory = { raw: 30, fg: 0, buffers: [0, 0, 0] };
-        let stats = { ticks: 0, lastInbound: 0, lastOutbound: 0 };
+        let stats = { ticks: 0, lastInbound: 0, lastOutbound: 0, seconds: 0 };
 
         const logisticsConfig = {
             inFreq: 15, inQty: 10,
@@ -244,6 +261,21 @@
             renderProductionLine();
             renderControls();
             updateLogistics();
+            updateUI(); // Initial UI draw
+        }
+
+        function setSpeed(val) {
+            simSpeed = val;
+            document.querySelectorAll('.speed-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`speed-${val}`).classList.add('active');
+            updateLogistics();
+        }
+
+        function updateClock() {
+            const h = Math.floor(stats.seconds / 3600).toString().padStart(2, '0');
+            const m = Math.floor((stats.seconds % 3600) / 60).toString().padStart(2, '0');
+            const s = Math.floor(stats.seconds % 60).toString().padStart(2, '0');
+            document.getElementById('sim-clock').innerText = `${h}:${m}:${s}`;
         }
 
         function toggleLogistics() {
@@ -257,17 +289,13 @@
                 btn.innerText = "Unlimited";
                 btn.className = "toggle-btn toggle-off px-3 py-1 rounded-full text-[10px] font-black uppercase";
                 ctrls.classList.add('opacity-30', 'pointer-events-none');
-                document.getElementById('unlimited-raw-bg').classList.remove('hidden');
-                document.getElementById('unlimited-fg-bg').classList.remove('hidden');
                 truckIn.className = "text-4xl absolute -top-16 opacity-0";
                 truckOut.className = "text-4xl absolute -top-16 opacity-0";
-                inventory.raw = 99; // Set high for visual
+                inventory.raw = 99;
             } else {
                 btn.innerText = "Limited";
                 btn.className = "toggle-btn toggle-on px-3 py-1 rounded-full text-[10px] font-black uppercase";
                 ctrls.classList.remove('opacity-30', 'pointer-events-none');
-                document.getElementById('unlimited-raw-bg').classList.add('hidden');
-                document.getElementById('unlimited-fg-bg').classList.add('hidden');
             }
             updateUI();
         }
@@ -278,9 +306,8 @@
             logisticsConfig.outFreq = parseInt(document.getElementById('out-freq').value) || 1;
             logisticsConfig.outQty = parseInt(document.getElementById('out-qty').value) || 1;
             
-            // Set CSS variables for animation speed
-            document.documentElement.style.setProperty('--in-dur', logisticsConfig.inFreq + 's');
-            document.documentElement.style.setProperty('--out-dur', logisticsConfig.outFreq + 's');
+            document.documentElement.style.setProperty('--in-dur', (logisticsConfig.inFreq / simSpeed) + 's');
+            document.documentElement.style.setProperty('--out-dur', (logisticsConfig.outFreq / simSpeed) + 's');
         }
 
         function renderProductionLine() {
@@ -331,27 +358,28 @@
         function simulationStep() {
             if (!simRunning) return;
 
-            // Logistics Logic
+            const secondsPerStep = 0.5 * simSpeed;
+            stats.seconds += secondsPerStep;
+            updateClock();
+
             if (!logisticsUnlimited) {
                 const truckIn = document.getElementById('truck-in');
                 const truckOut = document.getElementById('truck-out');
                 
-                // Set animations
                 if (!truckIn.classList.contains('anim-inbound')) truckIn.className = "text-4xl absolute -top-16 anim-inbound";
                 if (!truckOut.classList.contains('anim-outbound')) truckOut.className = "text-4xl absolute -top-16 anim-outbound";
 
-                if (stats.ticks % (logisticsConfig.inFreq * 2) === 0) {
+                if (Math.floor(stats.seconds / logisticsConfig.inFreq) > Math.floor((stats.seconds - secondsPerStep) / logisticsConfig.inFreq)) {
                     inventory.raw += logisticsConfig.inQty;
                 }
-                if (stats.ticks % (logisticsConfig.outFreq * 2) === 0) {
+                if (Math.floor(stats.seconds / logisticsConfig.outFreq) > Math.floor((stats.seconds - secondsPerStep) / logisticsConfig.outFreq)) {
                     inventory.fg = Math.max(0, inventory.fg - logisticsConfig.outQty);
                 }
             } else {
-                inventory.raw = 99; // Keep visual full
-                inventory.fg = 0;   // Keep visual empty (auto-shipped)
+                inventory.raw = 99;
+                inventory.fg = 0;
             }
 
-            // Production Logic
             config.stages.forEach((stage, idx) => {
                 let canProcess = false;
                 if (logisticsUnlimited && idx === 0) {
@@ -374,7 +402,7 @@
 
             stats.ticks++;
             updateUI();
-            setTimeout(simulationStep, 500);
+            setTimeout(simulationStep, 500 / (simSpeed === 100 ? 10 : 1));
         }
 
         async function startBatch(stageIdx) {
@@ -392,14 +420,14 @@
                 machineEl.classList.add('processing');
                 unitIcon.className = stage.type === 'noodle' ? 'unit unit-processing noodle-strand' : 'unit unit-processing text-xl';
                 
-                await new Promise(r => setTimeout(r, stage.time * 1000));
+                await new Promise(r => setTimeout(r, (stage.time * 1000) / simSpeed));
 
                 unitIcon.className = stage.type === 'noodle' ? 'unit unit-exiting noodle-strand' : 'unit unit-exiting text-xl';
                 machineEl.classList.remove('processing');
                 
                 setTimeout(() => {
                     unitIcon.className = stage.type === 'noodle' ? 'unit unit-entering noodle-strand' : 'unit unit-entering text-xl';
-                }, 500);
+                }, 500 / simSpeed);
             }
 
             stage.load--;
@@ -415,35 +443,44 @@
             document.getElementById('inv-fg').innerText = logisticsUnlimited ? '∞' : inventory.fg;
             document.getElementById('kpi-wip').innerText = config.stages.reduce((a,b) => a + b.load, 0) + inventory.buffers.reduce((a,b) => a+b, 0);
             
-            const drawItems = (id, count, color) => {
+            const drawItems = (id, count, color, unlimitedMsg = '') => {
                 const el = document.getElementById(id);
-                if (!el || (logisticsUnlimited && (id === 'vis-raw-inv' || id === 'vis-fg-inv'))) return;
+                if (!el) return;
+                
                 let html = '';
-                const limit = 45;
-                for(let i=0; i<Math.min(count, limit); i++) html += `<div class="buffer-pill" style="background:${color}"></div>`;
+                if (logisticsUnlimited && unlimitedMsg) {
+                    html = `<div class="absolute inset-0 flex items-center justify-center bg-slate-100/80">
+                                <span class="text-slate-400 font-black text-[10px] rotate-45 text-center">${unlimitedMsg}</span>
+                            </div>`;
+                } else {
+                    const limit = 45;
+                    for(let i=0; i<Math.min(count, limit); i++) html += `<div class="buffer-pill" style="background:${color}"></div>`;
+                }
                 el.innerHTML = html;
-                // Preserve the "unlimited" text if it was hidden
-                if (id === 'vis-raw-inv') el.appendChild(document.getElementById('unlimited-raw-bg'));
-                if (id === 'vis-fg-inv') el.appendChild(document.getElementById('unlimited-fg-bg'));
             };
 
-            drawItems('vis-raw-inv', inventory.raw, '#94a3b8');
-            drawItems('vis-fg-inv', inventory.fg, '#10b981');
+            drawItems('vis-raw-inv', inventory.raw, '#94a3b8', 'UNLIMITED');
+            drawItems('vis-fg-inv', inventory.fg, '#10b981', 'AUTO SHIP');
             inventory.buffers.forEach((val, i) => drawItems(`buf-vis-${i}`, val, '#cbd5e1'));
 
             let maxU = -1;
             let bnIdx = -1;
             config.stages.forEach((s, i) => {
                 const u = (s.utilSum / s.ticks) * 100;
-                document.getElementById(`util-text-${i}`).innerText = isNaN(u) ? '0%' : u.toFixed(0) + '%';
+                const utilEl = document.getElementById(`util-text-${i}`);
+                if (utilEl) utilEl.innerText = isNaN(u) ? '0%' : u.toFixed(0) + '%';
+                
                 const node = document.getElementById(`stage-node-${i}`);
-                node.classList.remove('bottleneck-glow');
-                if (u > maxU) { maxU = u; bnIdx = i; }
+                if (node) {
+                    node.classList.remove('bottleneck-glow');
+                    if (u > maxU) { maxU = u; bnIdx = i; }
+                }
             });
 
             if (bnIdx !== -1 && maxU > 2) {
                 document.getElementById('kpi-bottleneck').innerText = config.stages[bnIdx].name;
-                document.getElementById(`stage-node-${bnIdx}`).classList.add('bottleneck-glow');
+                const bnNode = document.getElementById(`stage-node-${bnIdx}`);
+                if (bnNode) bnNode.classList.add('bottleneck-glow');
             }
         }
 
